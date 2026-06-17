@@ -5,9 +5,9 @@ index=_internal
 )
 method=POST
 (
-    uri_path="/splunkd/__raw/v1/postgres/recovery/restore"
-    OR uri_path="/splunkd/__raw/v1/postgres/recovery/*"
-    OR uri_path="/splunkd/__raw/v1/postgres/*"
+    uri_path="*/splunkd/__raw/v1/postgres/recovery/restore*"
+    OR uri_path="*/splunkd/__raw/v1/postgres/recovery/*"
+    OR uri_path="*/splunkd/__raw/v1/postgres/*"
 )
 | eval src=clientip
 | eval dest=coalesce(splunk_server, host)
