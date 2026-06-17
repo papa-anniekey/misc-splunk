@@ -1,0 +1,49 @@
+index=_internal
+(
+    sourcetype=splunkd_ui_access
+    OR source="*/splunkd_ui_access.log"
+)
+method=POST
+(
+    uri_path="/splunkd/__raw/v1/postgres/recovery/restore"
+    OR uri_path="/splunkd/__raw/v1/postgres/recovery/*"
+    OR uri_path="/splunkd/__raw/v1/postgres/*"
+)
+| eval src=clientip
+| eval dest=coalesce(splunk_server, host)
+| eval signature=case(
+    uri_path="/splunkd/__raw/v1/postgres/recovery/restore",
+        "Suspicious Splunk Postgres Recovery Restore Request",
+    like(uri_path, "/splunkd/__raw/v1/postgres/recovery/%"),
+        "Suspicious Splunk Postgres Recovery API Request",
+    like(uri_path, "/splunkd/__raw/v1/postgres/%"),
+        "Suspicious Splunk Raw Postgres API Request",
+    true(),
+        "Suspicious Splunk Postgres API Request"
+)
+| eval severity=case(
+    uri_path="/splunkd/__raw/v1/postgres/recovery/restore", "critical",
+    like(uri_path, "/splunkd/__raw/v1/postgres/recovery/%"), "high",
+    true(), "medium"
+)
+| table
+    _time
+    signature
+    severity
+    src
+    dest
+    user
+    method
+    uri
+    uri_path
+    uri_query
+    status
+    bytes
+    referer
+    useragent
+    source
+    sourcetype
+    host
+    splunk_server
+    _raw
+| sort - _time
