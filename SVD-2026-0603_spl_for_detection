@@ -21,15 +21,9 @@ method=POST
     true(),
         "Suspicious Splunk Postgres API Request"
 )
-| eval severity=case(
-    uri_path="/splunkd/__raw/v1/postgres/recovery/restore", "critical",
-    like(uri_path, "/splunkd/__raw/v1/postgres/recovery/%"), "high",
-    true(), "medium"
-)
 | table
     _time
     signature
-    severity
     src
     dest
     user
