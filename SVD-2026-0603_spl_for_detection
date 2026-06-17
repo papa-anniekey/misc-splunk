@@ -33,6 +33,7 @@ method=POST
     src
     dest
     user
+    useragent
     method
     uri
     uri_path
