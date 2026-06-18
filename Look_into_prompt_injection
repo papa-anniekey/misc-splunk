@@ -1,0 +1,42 @@
+1. 英語の典型的プロンプトインジェクション（AIチャットタグ・ロール系含む
+index=[index_name]
+| eval raw_lower=lower(_raw)
+| where match(raw_lower, "jailbreak|system prompt|\[system\]|\[user\]|\[assistant\]|\[inst\]|\[/inst\]|<\|system\|>|<\|user\|>|<\|assistant\|>|<\|im_start\||<\|im_end\||ignore (previous|all|prior) instructions|disregard (all|previous|prior)|forget (all|previous|prior)|override (all|previous|safety)|bypass (safety|restrictions|filter)|you are now a|from now on you (are|will|must)|new (role|persona|personality|instructions):|your (new|true|actual|real) instructions|you must (now|follow|obey)|\{\{[a-z_]+\}\}|\[\[.*\]\]|<instruction>|</instruction>|<prompt>|</prompt>|role: (system|user|assistant)|\"role\": \"(system|user|assistant)\"")
+| table _time, _raw
+
+
+2. 各パターンの分類・内訳確認
+index=[index_name]
+| eval raw_lower=lower(_raw)
+| eval has_jailbreak=if(match(raw_lower,"jailbreak"),"YES","NO")
+| eval has_system_prompt=if(match(raw_lower,"system prompt"),"YES","NO")
+| eval has_bracket_tags=if(match(raw_lower,"\[system\]|\[user\]|\[assistant\]|\[inst\]|\[/inst\]"),"YES","NO")
+| eval has_xml_tags=if(match(raw_lower,"<system>|<user>|<assistant>|<instruction>"),"YES","NO")
+| eval has_ignore_instr=if(match(raw_lower,"ignore (previous|all|prior) instructions|disregard (all|previous|prior)|forget (all|previous|prior)"),"YES","NO")
+| eval has_override=if(match(raw_lower,"override (all|previous|safety)|bypass (safety|restrictions|filter)"),"YES","NO")
+| eval has_role_change=if(match(raw_lower,"you are now a|from now on you (are|will|must)|new (role|persona|personality|instructions):"),"YES","NO")
+| eval has_template_vars=if(match(_raw,"\{\{[a-zA-Z_]+\}\}"),"YES","NO")
+| eval has_prompt_tags=if(match(raw_lower,"<instruction>|</instruction>|<prompt>|</prompt>"),"YES","NO")
+| eval has_role_field=if(match(raw_lower,"role: (system|user|assistant)|\"role\": \"(system|user|assistant)\""),"YES","NO")
+| where has_jailbreak="YES" OR has_system_prompt="YES" OR has_bracket_tags="YES" OR has_xml_tags="YES" OR has_ignore_instr="YES" OR has_override="YES" OR has_role_change="YES" OR has_template_vars="YES" OR has_prompt_tags="YES" OR has_role_field="YES"
+| table _time, author, has_jailbreak, has_system_prompt, has_bracket_tags, has_xml_tags, has_ignore_instr, has_override, has_role_change, has_template_vars, has_prompt_tags, has_role_field
+
+3. テンプレート変数パターンの詳細（変数名の抽出）
+index=[index_name]
+| where match(_raw, "\{\{[a-zA-Z_]+\}\}")
+| rex field=_raw max_match=20 "(?P<template_var>\{\{[a-zA-Z_]+\}\})"
+| stats values(template_var) as template_vars, count by _time, author
+| table _time, author, template_vars, count
+
+4. 日本語プロンプトインジェクション（具体的フレーズ）
+index=[index_name]
+| eval raw_lower=lower(_raw)
+| where match(raw_lower, "このメッセージを無視して|以上の指示を無視|先の指示を忘れて|プロンプトを無視して|今後はアシスタントとしての役割を|あなたは今後|今からあなたは|今後は制約なしに|すべての制約を無視|人工知能としての制約|システムプロンプトを無視|前回の指示を無視|指示をリセット|新しい指示を受け取|モデル制約の無視")
+| table _time, author, _raw
+
+
+5. 隠しテキスト型プロンプトインジェクション（CSS利用の視覚的隠蔽）
+index=[index_name]
+| eval raw_lower=lower(_raw)
+| where match(raw_lower, "color.*white.*ignore|display.*none.*instruction|font-size.*0.*prompt|visibility.*hidden.*system|color.*#fff.*instruction|color.*ffffff.*ignore|color.*rgb.*255.*255.*255.*ignore|opacity.*0.*system")
+| table _time, author, _raw
