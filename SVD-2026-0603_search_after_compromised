@@ -152,5 +152,4 @@ OR
     last_web_uri_path as uri_path
     last_web_uri_query as uri_query
     last_web_bytes as bytes
-| search pg_backup_file=/tmp/hoge
 | sort - postgres_event_time
