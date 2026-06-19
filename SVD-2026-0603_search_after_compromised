@@ -1,0 +1,156 @@
+(
+    index=_internal
+    (
+        sourcetype=splunkd_ui_access
+        OR source="*/splunkd_ui_access.log"
+    )
+    method=POST
+    status=200
+    (
+        uri_path="*/splunkd/__raw/v1/postgres/recovery/restore*"
+        OR uri_path="*/splunkd/__raw/v1/postgres/recovery/backup*"
+        OR uri_path="*/splunkd/__raw/v1/postgres/recovery/*"
+        OR uri_path="*/splunkd/__raw/v1/postgres/*"
+    )
+)
+OR
+(
+    index=_internal
+    (
+        sourcetype="node:sidecar:postgres:stdout"
+        OR source="*/sup-pkg-postgres-stdout.log"
+    )
+    (
+        msg=*
+        OR output=*
+        OR "failed to backup postgres"
+        OR "starting postgres backup"
+        OR "pg_dump:"
+    )
+)
+| spath
+
+| eval event_type=case(
+    (sourcetype=="splunkd_ui_access" OR like(source,"%/splunkd_ui_access.log"))
+        AND method=="POST"
+        AND status=200,
+        "web_access",
+
+    (sourcetype=="node:sidecar:postgres:stdout" OR like(source,"%/sup-pkg-postgres-stdout.log"))
+        AND (isnotnull(msg) OR isnotnull(output)),
+        "postgres_backup_event",
+
+    true(),
+        "other"
+)
+
+| where event_type IN ("web_access", "postgres_backup_event")
+
+| eval correlation_host=coalesce(splunk_server, host)
+
+| eval web_time=if(event_type=="web_access", _time, null())
+| eval web_src=if(event_type=="web_access", clientip, null())
+| eval web_dest=if(event_type=="web_access", correlation_host, null())
+| eval web_user=if(event_type=="web_access", user, null())
+| eval web_useragent=if(event_type=="web_access", useragent, null())
+| eval web_method=if(event_type=="web_access", method, null())
+| eval web_status=if(event_type=="web_access", status, null())
+| eval web_uri=if(event_type=="web_access", uri, null())
+| eval web_uri_path=if(event_type=="web_access", uri_path, null())
+| eval web_uri_query=if(event_type=="web_access", uri_query, null())
+| eval web_bytes=if(event_type=="web_access", bytes, null())
+
+| eval pg_time=if(event_type=="postgres_backup_event", _time, null())
+| eval pg_level=if(event_type=="postgres_backup_event", level, null())
+| eval pg_msg=if(event_type=="postgres_backup_event", msg, null())
+| eval pg_output=if(event_type=="postgres_backup_event", output, null())
+| eval pg_backup_file=if(event_type=="postgres_backup_event", backup_file, null())
+| eval pg_backup_id=if(event_type=="postgres_backup_event", backup_id, null())
+| eval pg_database=if(event_type=="postgres_backup_event", database, null())
+| eval pg_source_file=if(event_type=="postgres_backup_event", 'source.file', null())
+| eval pg_source_function=if(event_type=="postgres_backup_event", 'source.function', null())
+| eval pg_source_line=if(event_type=="postgres_backup_event", 'source.line', null())
+
+| sort 0 correlation_host _time
+
+| streamstats current=f
+    latest(web_time) as last_web_time
+    latest(web_src) as last_web_src
+    latest(web_dest) as last_web_dest
+    latest(web_user) as last_web_user
+    latest(web_useragent) as last_web_useragent
+    latest(web_method) as last_web_method
+    latest(web_status) as last_web_status
+    latest(web_uri) as last_web_uri
+    latest(web_uri_path) as last_web_uri_path
+    latest(web_uri_query) as last_web_uri_query
+    latest(web_bytes) as last_web_bytes
+    by correlation_host
+
+| eval max_delta_sec=0.1
+
+| where event_type=="postgres_backup_event"
+    AND isnotnull(last_web_time)
+    AND _time >= last_web_time
+    AND (_time - last_web_time) <= max_delta_sec
+
+| eval delta_sec=round(_time - last_web_time, 3)
+
+| eval signature=case(
+    like(last_web_uri_path,"%/splunkd/__raw/v1/postgres/recovery/restore%"),
+        "Suspicious Splunk Postgres Restore Request Followed by Postgres Backup Event",
+    like(last_web_uri_path,"%/splunkd/__raw/v1/postgres/recovery/backup%"),
+        "Suspicious Splunk Postgres Backup Request Followed by Postgres Backup Event",
+    like(last_web_uri_path,"%/splunkd/__raw/v1/postgres/recovery/%"),
+        "Suspicious Splunk Postgres Recovery API Request Followed by Postgres Backup Event",
+    like(last_web_uri_path,"%/splunkd/__raw/v1/postgres/%"),
+        "Suspicious Splunk Raw Postgres API Request Followed by Postgres Backup Event",
+    true(),
+        "Suspicious Splunk Postgres API Request Followed by Postgres Backup Event"
+)
+
+| table
+    last_web_time
+    pg_time
+    delta_sec
+    signature
+    last_web_src
+    last_web_dest
+    last_web_user
+    last_web_useragent
+    last_web_method
+    last_web_status
+    last_web_uri
+    last_web_uri_path
+    last_web_uri_query
+    last_web_bytes
+    pg_level
+    pg_msg
+    pg_output
+    pg_backup_file
+    pg_backup_id
+    pg_database
+    pg_source_file
+    pg_source_function
+    pg_source_line
+    source
+    sourcetype
+    host
+    splunk_server
+    _raw
+
+| rename
+    last_web_time as web_access_time
+    pg_time as postgres_event_time
+    last_web_src as src
+    last_web_dest as dest
+    last_web_user as user
+    last_web_useragent as useragent
+    last_web_method as method
+    last_web_status as status
+    last_web_uri as uri
+    last_web_uri_path as uri_path
+    last_web_uri_query as uri_query
+    last_web_bytes as bytes
+| search pg_backup_file=/tmp/hoge
+| sort - postgres_event_time
