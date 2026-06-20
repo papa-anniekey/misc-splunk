@@ -1,0 +1,41 @@
+"Splunk.SVD-2026-0603.BackupFile.Body"
+ To detect expoit activity and catch to create a file after success the exploit  SVD-2026-0603.
+ So the severity is "Critical".
+--------------------------------------------------------------
+F-SBID(
+--attack_id 1001;
+--name "Splunk.SVD-2026-0603.BackupFile.Body";
+--protocol tcp;
+--service HTTP;
+--parsed_type HTTP_POST;
+--dst_port 8000;
+--flow from_client;
+--pattern "/splunkd/__raw/v1/postgres/recovery/";
+--context uri;
+--no_case;
+--pattern "|22|backupFile|22|";
+--context body;
+--no_case;
+--severity critical; 
+)
+--------------------------------------------------------------
+
+
+"Splunk.SVD-2026-0603.Postgres.Recovery.BackupOrRestore"
+ This signature could catch scanning activities but the threat actor has intent to progress the next step. 
+Threat actor use HEAD request only for scanning. But this signature could catch POST only, it means a threat actor has intention. 
+
+--------------------------------------------------------------
+F-SBID(
+--attack_id 1000;
+--name "Splunk.SVD-2026-0603.Postgres.Recovery.BackupOrRestore";
+--protocol tcp;
+--service HTTP;
+--parsed_type HTTP_POST;
+--dst_port 8000;
+--flow from_client;
+--pcre "/\/splunkd\/__raw\/v1\/postgres\/recovery\/(backup|restore)(\?|$)/i";
+--context uri;
+--severity high; 
+)
+--------------------------------------------------------------
